@@ -1,9 +1,11 @@
 import SwiftUI
 
+// 四种颜色
 enum CodeColor: CaseIterable {
     case red, green, blue, yellow
 
-    var color: Color {
+    // 返回 SwiftUI Color
+    func color() -> Color {
         switch self {
         case .red: return .red
         case .green: return .green
@@ -13,128 +15,152 @@ enum CodeColor: CaseIterable {
     }
 }
 
+// 每次猜测的记录
 struct Guess {
     var colors: [CodeColor]
-    var black: Int
-    var white: Int
+    var black: Int // 位置和颜色都对
+    var white: Int // 颜色对但位置错
 }
 
 struct ContentView: View {
-
+    // MARK: - 游戏状态
     @State private var secret: [CodeColor] = []
-    @State private var currentGuess: [CodeColor] = []
-    @State private var guesses: [Guess] = []
-    @State private var gameOver = false
-    @State private var win = false
+    @State private var guess: [CodeColor] = [.red, .red, .red, .red] // 当前猜测
+    @State private var allGuesses: [Guess] = []
+    @State private var message = "开始游戏，选择颜色猜密码！"
 
-    let maxTurns = 12
-
+    // MARK: - UI
     var body: some View {
-        VStack(spacing: 16) {
+        VStack {
             Text("Color Code")
                 .font(.largeTitle)
-                .bold()
+                .padding()
 
-            // 历史猜测
-            List(guesses.indices, id: \.self) { index in
+            Text(message)
+                .padding()
+
+            // 历史猜测列表
+            List(allGuesses.indices, id: \.self) { i in
                 HStack {
-                    ForEach(guesses[index].colors.indices, id: \.self) { i in
+                    // 显示猜测的颜色
+                    ForEach(0..<4, id: \.self) { j in
                         Circle()
-                            .fill(guesses[index].colors[i].color)
-                            .frame(width: 20, height: 20)
+                            .fill(allGuesses[i].colors[j].color())
+                            .frame(width: 30, height: 30)
                     }
 
                     Spacer()
 
-                    Text("⚫ \(guesses[index].black)")
-                    Text("⚪ \(guesses[index].white)")
+                    // 黑白点
+                    HStack(spacing: 5) {
+                        // 黑点
+                        ForEach(0..<allGuesses[i].black, id: \.self) { _ in
+                            Circle()
+                                .fill(Color.black)
+                                .frame(width: 20, height: 20)
+                        }
+                        // 白点
+                        ForEach(0..<allGuesses[i].white, id: \.self) { _ in
+                            Circle()
+                                .fill(Color.white)
+                                .overlay(Circle().stroke(Color.black))
+                                .frame(width: 20, height: 20)
+                        }
+                    }
                 }
             }
-            .frame(height: 300)
 
-            // 当前选择
+            // 当前猜测圆圈
             HStack {
-                ForEach(currentGuess.indices, id: \.self) { i in
+                ForEach(0..<4, id: \.self) { i in
                     Circle()
-                        .fill(currentGuess[i].color)
-                        .frame(width: 30, height: 30)
+                        .fill(guess[i].color())
+                        .frame(width: 40, height: 40)
                         .onTapGesture {
-                            cycleColor(at: i)
+                            cycleColor(at: i) // 点击切换颜色
                         }
                 }
             }
+            .padding()
 
             Button("提交") {
                 submitGuess()
             }
-            .disabled(gameOver)
-
-            if gameOver {
-                Text(win ? "🎉 你赢了！" : "💥 游戏失败")
-                    .font(.title2)
-            }
+            .padding()
         }
-        .padding()
-        .onAppear {
-            startGame()
-        }
+        .onAppear(perform: startGame)
     }
 
     // MARK: - 游戏逻辑
 
+    // 初始化游戏
     func startGame() {
-        secret = (0..<4).map { _ in CodeColor.allCases.randomElement()! }
-        currentGuess = Array(repeating: .red, count: 4)
-        guesses.removeAll()
-        gameOver = false
-        win = false
+        secret = []
+        allGuesses = []
+        message = "开始游戏，选择颜色猜密码！"
+
+        // 随机生成4个颜色密码
+        for _ in 0..<4 {
+            secret.append(CodeColor.allCases.randomElement()!)
+        }
+
+        guess = [.red, .red, .red, .red] // 当前猜测初始为红色
     }
 
+    // 点击圆圈切换颜色
     func cycleColor(at index: Int) {
-        let all = CodeColor.allCases
-        let current = currentGuess[index]
-        let nextIndex = (all.firstIndex(of: current)! + 1) % all.count
-        currentGuess[index] = all[nextIndex]
-    }
-
-    func submitGuess() {
-        let feedback = evaluate(secret: secret, guess: currentGuess)
-        guesses.append(
-            Guess(colors: currentGuess,
-                  black: feedback.black,
-                  white: feedback.white)
-        )
-
-        if feedback.black == 4 {
-            win = true
-            gameOver = true
-        } else if guesses.count >= maxTurns {
-            gameOver = true
+        let colors = CodeColor.allCases
+        if let currentIndex = colors.firstIndex(of: guess[index]) {
+            let nextIndex = (currentIndex + 1) % colors.count
+            guess[index] = colors[nextIndex]
         }
     }
 
-    func evaluate(secret: [CodeColor], guess: [CodeColor]) -> (black: Int, white: Int) {
-        var black = 0
-        var secretLeft: [CodeColor] = []
-        var guessLeft: [CodeColor] = []
+    // 提交当前猜测
+    func submitGuess() {
+        let result = checkGuess(secret: secret, guess: guess)
+        let newGuess = Guess(colors: guess, black: result.black, white: result.white)
+        allGuesses.append(newGuess)
 
+        if result.black == 4 {
+            message = "🎉 恭喜！你猜对了！"
+        } else if allGuesses.count >= 12 {
+            message = "游戏结束！正确答案是：\(secret.map { $0.color().description })"
+        } else {
+            message = "继续猜！"
+        }
+    }
+
+    // 计算黑点和白点（初学者简单方法）
+    func checkGuess(secret: [CodeColor], guess: [CodeColor]) -> (black: Int, white: Int) {
+        var black = 0
+        var white = 0
+
+        var secretCopy = secret
+        var guessCopy = guess
+
+        // 先算黑点
         for i in 0..<4 {
-            if secret[i] == guess[i] {
+            if guessCopy[i] == secretCopy[i] {
                 black += 1
-            } else {
-                secretLeft.append(secret[i])
-                guessLeft.append(guess[i])
+                // 标记已检查
+                guessCopy[i] = .red
+                secretCopy[i] = .green
             }
         }
 
-        var white = 0
-        for color in guessLeft {
-            if let index = secretLeft.firstIndex(of: color) {
-                white += 1
-                secretLeft.remove(at: index)
+        // 再算白点
+        for i in 0..<4 {
+            for j in 0..<4 {
+                if guessCopy[i] == secretCopy[j] && guessCopy[i] != .red && secretCopy[j] != .green {
+                    white += 1
+                    secretCopy[j] = .green
+                    break
+                }
             }
         }
 
         return (black, white)
     }
 }
+
